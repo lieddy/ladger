@@ -214,26 +214,38 @@ if st.session_state.username:
     with st.sidebar:
         st.header(f"添加费用记录 - {st.session_state.current_property}")
         
-        # 表单
+        # 费用类型选择（独立于表单）。不使用 on_change 回调以避免在表单上下文中触发 StreamlitAPIException。
+        st.selectbox(
+            "费用类型",
+            PRESET_EXPENSE_TYPES + ["其他"],
+            key="expense_type",
+            help="选择费用类型，选择‘其他’可自定义名称"
+        )
+
+        # 如果选择"其他"，显示自定义费用名称文本框（也在表单外部以便即时显示）
+        if st.session_state.get("expense_type") == "其他":
+            st.text_input("自定义费用名称", key="custom_type")
+
+        # 表单（只包含不需要回调的控件）
         with st.form(key="expense_form"):
             date = st.date_input("日期", value=datetime.now().date())
-            expense_type = st.selectbox("费用类型", PRESET_EXPENSE_TYPES + ["其他"])
-            
-            # 如果选择"其他"，允许用户自定义费用名称
-            if expense_type == "其他":
-                custom_type = st.text_input("自定义费用名称")
-                expense_type = custom_type if custom_type else "其他"
-                
             amount = st.number_input("金额", min_value=0.0, step=100.0, format="%.2f")
             description = st.text_area("描述（可选）")
-            
+
             submit_button = st.form_submit_button(label="添加记录")
-            
+
             if submit_button:
                 if amount > 0:
+                    # 在提交时决定最终的费用类型（优先自定义值）
+                    chosen_type = st.session_state.get("expense_type")
+                    if chosen_type == "其他":
+                        custom = st.session_state.get("custom_type", "")
+                        if custom:
+                            chosen_type = custom
+
                     expense_record = {
                         "日期": date.strftime("%Y-%m-%d"),
-                        "费用类型": expense_type,
+                        "费用类型": chosen_type,
                         "金额": amount,
                         "描述": description
                     }
@@ -242,7 +254,7 @@ if st.session_state.username:
                         st.session_state.properties[st.session_state.current_property] = []
                     st.session_state.properties[st.session_state.current_property].append(expense_record)
                     save_user_data()  # 保存数据
-                    st.success(f"已添加 {expense_type} 记录！")
+                    st.success(f"已添加 {chosen_type} 记录！")
                 else:
                     st.error("金额必须大于0")
 
