@@ -173,12 +173,19 @@ if st.session_state.username:
             cols[3].write("**描述**")
             
             # 显示每条记录
-            for expense in current_expenses:
-                cols = st.columns([2, 2, 2, 3])
+            for i, expense in enumerate(current_expenses):
+                cols = st.columns([2, 2, 2, 2, 1])
                 cols[0].write(expense["日期"])
                 cols[1].write(expense["费用类型"])
                 cols[2].write(f"¥{expense['金额']:,.2f}")
                 cols[3].write(expense["描述"] if expense["描述"] else "-")
+                
+                # 添加删除按钮
+                if cols[4].button("🗑️", key=f"delete_{i}"):
+                    # 删除指定索引的费用记录
+                    st.session_state.properties[st.session_state.current_property].pop(i)
+                    save_user_data()  # 保存数据
+                    st.rerun()
             
             # 提供下载功能
             def convert_to_csv():
