@@ -6,6 +6,15 @@ import os
 from datetime import datetime
 from collections import defaultdict
 
+# Optional: supabase client for remote persistence
+_HAS_SUPABASE = False
+try:
+    from supabase import create_client
+    _HAS_SUPABASE = True
+except Exception:
+    # supabase not installed or import failed; fall back to local file storage
+    _HAS_SUPABASE = False
+
 # 设置页面配置
 st.set_page_config(
     page_title="房产记账工具",
@@ -18,9 +27,74 @@ DATA_DIR = "user_data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
 
+
+# --- Remote persistence helpers (Supabase) ---
+def _has_remote_config():
+    # Streamlit secrets can store SUPABASE_URL and SUPABASE_KEY
+    try:
+        return bool(st.secrets.get("SUPABASE_URL") and st.secrets.get("SUPABASE_KEY") and _HAS_SUPABASE)
+    except Exception:
+        return False
+
+
+def _get_supabase_client():
+    """Return a Supabase client using Streamlit secrets. Caller should check _has_remote_config() first."""
+    url = st.secrets.get("SUPABASE_URL")
+    key = st.secrets.get("SUPABASE_KEY")
+    return create_client(url, key)
+
+
+def load_user_data_remote(username: str):
+    """Load user data from a Supabase table named `ledgers` with columns (username text primary key, data jsonb).
+    Returns None if not found.
+    """
+    try:
+        client = _get_supabase_client()
+        resp = client.table("ledgers").select("data").eq("username", username).execute()
+        data_rows = resp.data if hasattr(resp, "data") else resp.get("data")
+        if data_rows:
+            return data_rows[0].get("data") if isinstance(data_rows[0], dict) else None
+    except Exception as e:
+        # don't crash the app for remote errors; fall back to local
+        st.error(f"远程加载数据失败: {e}")
+    return None
+
+
+def save_user_data_remote(username: str, data: dict):
+    """Upsert user data into Supabase `ledgers` table."""
+    try:
+        client = _get_supabase_client()
+        # upsert with primary key = username
+        client.table("ledgers").upsert({"username": username, "data": data}).execute()
+        return True
+    except Exception as e:
+        st.error(f"远程保存数据失败: {e}")
+        return False
+
+# --- end remote helpers ---
+
 # 加载用户数据
 def load_user_data():
-    user_file = os.path.join(DATA_DIR, f"{st.session_state.username}.json")
+    """Load user data for current session. If remote (Supabase) is configured, prefer remote data.
+
+    Falls back to local JSON file in `user_data/` if remote isn't available or lookup fails.
+    """
+    username = st.session_state.username
+    if not username:
+        st.session_state.properties = {"默认房产": []}
+        return
+
+    # Try remote first if configured
+    if _has_remote_config():
+        remote = load_user_data_remote(username)
+        if remote is not None:
+            st.session_state.properties = remote.get("properties", {}) if isinstance(remote, dict) else {"默认房产": []}
+            if not st.session_state.properties:
+                st.session_state.properties = {"默认房产": []}
+            return
+
+    # Fallback to local file
+    user_file = os.path.join(DATA_DIR, f"{username}.json")
     if os.path.exists(user_file):
         with open(user_file, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -33,14 +107,29 @@ def load_user_data():
 
 # 保存用户数据
 def save_user_data():
-    if st.session_state.username:
-        user_file = os.path.join(DATA_DIR, f"{st.session_state.username}.json")
-        data = {
-            "username": st.session_state.username,
-            "properties": st.session_state.properties
-        }
+    """Save current user's data. If remote is configured, try remote upsert and fall back to local file on failure."""
+    username = st.session_state.username
+    if not username:
+        return
+
+    data = {
+        "username": username,
+        "properties": st.session_state.properties
+    }
+
+    # If remote storage available, try that first
+    if _has_remote_config():
+        ok = save_user_data_remote(username, data)
+        if ok:
+            return
+
+    # Fallback to local file storage
+    try:
+        user_file = os.path.join(DATA_DIR, f"{username}.json")
         with open(user_file, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"本地保存数据失败: {e}")
 
 # 应用标题
 st.title("🏠 房产记账工具")
