@@ -6,19 +6,10 @@ import os
 from datetime import datetime
 from collections import defaultdict
 
-# 设置页面配置
-st.set_page_config(
-    page_title="房产记账工具",
-    page_icon="🏠",
-    layout="wide"
-)
-
-# 创建数据目录
+# 数据目录
 DATA_DIR = "user_data"
 if not os.path.exists(DATA_DIR):
     os.makedirs(DATA_DIR)
-
-# 加载用户数据
 def load_user_data():
     user_file = os.path.join(DATA_DIR, f"{st.session_state.username}.json")
     if os.path.exists(user_file):
@@ -125,21 +116,28 @@ if st.session_state.username:
     with st.sidebar:
         st.header(f"添加费用记录 - {st.session_state.current_property}")
         
+        # 先把费用类型选择放在表单外，使其能触发重渲染以显示自定义输入框
+        if 'expense_type_select' not in st.session_state:
+            st.session_state['expense_type_select'] = PRESET_EXPENSE_TYPES[0] if PRESET_EXPENSE_TYPES else "其他"
+
+        expense_type_select = st.selectbox("费用类型", PRESET_EXPENSE_TYPES + ["其他"], key='expense_type_select')
+
         # 表单
         with st.form(key="expense_form"):
             date = st.date_input("日期", value=datetime.now().date())
-            expense_type = st.selectbox("费用类型", PRESET_EXPENSE_TYPES + ["其他"])
-            
+
             # 如果选择"其他"，允许用户自定义费用名称
-            if expense_type == "其他":
-                custom_type = st.text_input("自定义费用名称")
+            if st.session_state.get('expense_type_select') == "其他":
+                custom_type = st.text_input("自定义费用名称", key="custom_expense_type")
                 expense_type = custom_type if custom_type else "其他"
-                
+            else:
+                expense_type = st.session_state.get('expense_type_select')
+
             amount = st.number_input("金额", min_value=0.0, step=100.0, format="%.2f")
             description = st.text_area("描述（可选）")
-            
+
             submit_button = st.form_submit_button(label="添加记录")
-            
+
             if submit_button:
                 if amount > 0:
                     expense_record = {
