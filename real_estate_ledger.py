@@ -175,11 +175,22 @@ if st.session_state.username:
     # 选择当前房产
     property_names = list(st.session_state.properties.keys())
     if property_names:
-        st.session_state.current_property = st.sidebar.selectbox(
+        # 确保当前选中的房产在列表中，如果不在则设置为第一个房产
+        if st.session_state.current_property not in property_names:
+            st.session_state.current_property = property_names[0]
+        
+        # 使用key参数确保selectbox状态的正确管理
+        selected_property = st.sidebar.selectbox(
             "选择房产", 
             property_names, 
-            index=property_names.index(st.session_state.current_property) if st.session_state.current_property in property_names else 0
+            index=property_names.index(st.session_state.current_property),
+            key="property_selector"
         )
+        # 只有当选择的房产发生变化时才更新current_property
+        if selected_property != st.session_state.current_property:
+            st.session_state.current_property = selected_property
+            # 强制重新运行以确保UI更新
+            st.experimental_rerun()
     else:
         st.session_state.current_property = "默认房产"
         st.session_state.properties[st.session_state.current_property] = []
@@ -201,11 +212,22 @@ if st.session_state.username:
     # 删除当前房产
     if len(st.session_state.properties) > 1:
         if st.sidebar.button(f"删除房产 '{st.session_state.current_property}'"):
-            del st.session_state.properties[st.session_state.current_property]
-            # 设置当前房产为第一个房产
-            st.session_state.current_property = list(st.session_state.properties.keys())[0]
-            save_user_data()
-            st.rerun()
+            st.session_state[f"confirm_delete_{st.session_state.current_property}"] = True
+    
+        # 显示确认对话框
+        if st.session_state.get(f"confirm_delete_{st.session_state.current_property}", False):
+            st.sidebar.warning(f"确定要删除房产 '{st.session_state.current_property}' 吗？此操作无法撤销。")
+            col1, col2 = st.sidebar.columns(2)
+            if col1.button("确认删除"):
+                del st.session_state.properties[st.session_state.current_property]
+                # 设置当前房产为第一个房产
+                st.session_state.current_property = list(st.session_state.properties.keys())[0]
+                save_user_data()
+                st.session_state[f"confirm_delete_{st.session_state.current_property}"] = False
+                st.rerun()
+            if col2.button("取消"):
+                st.session_state[f"confirm_delete_{st.session_state.current_property}"] = False
+                st.rerun()
     
     # 获取当前房产的费用记录
     current_expenses = st.session_state.properties.get(st.session_state.current_property, [])
@@ -344,10 +366,10 @@ if st.session_state.username:
             st.info("暂无统计数据")
 
     # 清空当前房产的所有记录按钮
-    if current_expenses:
-        if st.button("🗑️ 清空当前房产的所有记录"):
-            st.session_state.properties[st.session_state.current_property] = []
-            save_user_data()  # 保存数据
-            st.rerun()
+    # if current_expenses:
+    #     if st.button("🗑️ 清空当前房产的所有记录"):
+    #         st.session_state.properties[st.session_state.current_property] = []
+    #         save_user_data()  # 保存数据
+    #         st.rerun()
 else:
     st.info("请输入用户名登录以使用应用。")
