@@ -190,7 +190,7 @@ if st.session_state.username:
         if selected_property != st.session_state.current_property:
             st.session_state.current_property = selected_property
             # 强制重新运行以确保UI更新
-            st.experimental_rerun()
+            st.rerun()
     else:
         st.session_state.current_property = "默认房产"
         st.session_state.properties[st.session_state.current_property] = []
